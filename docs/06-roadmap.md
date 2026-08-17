@@ -1,6 +1,6 @@
 # Roadmap del proyecto y de la serie de YouTube
 
-## Etapa 1 — Investigación y arquitectura (este repositorio, completada)
+## Etapa 1 — Investigación y arquitectura (completada)
 
 - Selección de framework de orquestación (LiveKit Agents)
 - Selección de STT, LLM, TTS, VAD y turn detection 100% gratuitos y autoalojables
@@ -8,43 +8,44 @@
 - Documentación honesta de la única excepción de gratuidad (telefonía PSTN)
 - Definición del cliente de validación: landing page web mínima (ver [`07-cliente-web-landing.md`](./07-cliente-web-landing.md))
 
-## Etapa 2 — Preparación del VPS
+## Etapas 2 a 5 — código construido, pendiente de ejecutar en el VPS real
 
-- Verificación de specs del VPS contra [`04-requisitos-vps.md`](./04-requisitos-vps.md)
-- Instalación de Docker, Docker Compose
-- Configuración de dominio + TLS (Caddy o Nginx+Certbot) — requisito obligatorio para que la landing page pueda pedir permiso de micrófono
-- Apertura de puertos necesarios para LiveKit
+Todo el código de estas cuatro etapas ya está en el repositorio (carpetas `agent/`, `server/`, `piper/`, `docker/`, `web/`, `scripts/`), escrito y verificado contra el código fuente real de `livekit-agents==1.6.10` (clonado y revisado durante la construcción, no generado por analogía). Lo que falta es correrlo: este entorno de construcción no tenía acceso SSH al VPS ni a PyPI, así que el stack nunca se levantó de punta a punta contra un LiveKit Server real. Guía completa de despliegue: [`08-instalacion-despliegue.md`](./08-instalacion-despliegue.md).
 
-## Etapa 3 — Despliegue de LiveKit Server + landing page mínima
+### Etapa 2 — Preparación del VPS
 
-- `docker-compose` con LiveKit Server + Redis
-- Servidor de tokens (endpoint que firma JWT de acceso a sala)
-- Landing page mínima (HTML + LiveKit Client SDK) para pedir micrófono y conectarse a una sala
-- Verificación de conectividad WebRTC (test de sala básica, sin agente todavía)
+- `scripts/01-setup-vps.sh`: instala Docker + plugin compose, verifica AVX2/RAM/disco, abre puertos en ufw
+- `docker/Caddyfile`: dos subdominios con TLS automático (Let's Encrypt) — uno para LiveKit, otro para la landing page + servidor de tokens
 
-## Etapa 4 — Instalación de componentes de IA
+### Etapa 3 — Despliegue de LiveKit Server + landing page mínima
 
-- Ollama + descarga de Qwen2.5-7B-Instruct
-- faster-whisper (modelo medium, cuantizado int8)
-- Piper + voz en español
+- `docker/docker-compose.yml`: LiveKit Server + Redis
+- `server/`: servidor de tokens (FastAPI + `livekit-api`, firma JWT sin exponer el secreto al navegador)
+- `web/index.html`: landing page mínima (LiveKit Client SDK vía CDN, botón "Hablar con el agente")
 
-## Etapa 5 — Construcción del agente (worker)
+### Etapa 4 — Instalación de componentes de IA
 
-- Agent en Python con LiveKit Agents SDK
-- Pipeline VAD → turn detector → STT → LLM → TTS conectado end-to-end
-- Manejo de interrupciones (barge-in)
-- **Primera prueba real de punta a punta**: hablar con el agente desde la landing page construida en la Etapa 3
+- Servicio `ollama` en `docker-compose.yml` (no expuesto al host) + `scripts/03-pull-ollama-model.sh`
+- `agent/plugins/stt_faster_whisper.py`: STT local, modelo configurable vía `WHISPER_MODEL_SIZE`
+- `piper/`: imagen Docker de Piper TTS (fork OHF-Voice/piper1-gpl, GPL-3.0-or-later — corrección de licencia respecto a la Etapa 1, ver [`02-componentes.md`](./02-componentes.md)) con descarga automática de la voz española en el primer arranque
 
-## Etapa 6 — Pruebas y ajuste de latencia
+### Etapa 5 — Construcción del agente (worker)
 
+- `agent/agent.py`: `AgentSession` con VAD (Silero) → turn detector local (`inference.TurnDetector(version="v1-mini")`, corrección de API respecto a la Etapa 1) → STT (faster-whisper) → LLM (Ollama vía `openai.LLM.with_ollama`) → TTS (Piper por HTTP)
+- Manejo de interrupciones: configuración por defecto de `TurnHandlingOptions`, sin overrides todavía
+
+## Etapa 6 — Pruebas y ajuste de latencia (próximo paso real)
+
+- Primera prueba de punta a punta en el VPS: seguir [`08-instalacion-despliegue.md`](./08-instalacion-despliegue.md) y hablar con el agente desde la landing page
 - Medición de latencia real por etapa
 - Tuning de parámetros (tamaño de modelo, streaming, buffers)
+- Corregir en el código cualquier desajuste entre lo verificado contra el SDK y su comportamiento real bajo carga
 
 ## Etapa 7 — Demo pública y cierre de la serie
 
-- Pulido de la landing page (UI, indicadores de estado: escuchando/pensando/hablando)
+- Pulido de la landing page (indicadores de estado: escuchando/pensando/hablando)
 - Grabación de la demo final para el video de cierre
 
 ---
 
-Cada etapa a partir de la 2 corresponde a un video/capítulo separado de la serie. Este repositorio se irá actualizando con el código y la documentación de cada etapa conforme se construya — no antes.
+Cada etapa corresponde a un video/capítulo separado de la serie.

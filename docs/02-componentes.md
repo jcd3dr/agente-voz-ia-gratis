@@ -31,7 +31,7 @@ Servidor de inferencia: **Ollama** (simplifica gestión de modelos y expone API 
 
 | Modelo | Licencia | Español | Latencia | Clonación de voz | Hardware | Elegido |
 |---|---|---|---|---|---|---|
-| **Piper** | MIT | Nativo (varias voces es_ES/es_MX/es_AR) | <500 ms | No | Solo CPU | ✅ |
+| **Piper** | GPL-3.0-or-later¹ | Nativo (varias voces es_ES/es_MX/es_AR) | <500 ms | No | Solo CPU | ✅ |
 | XTTS-v2 (Coqui) | Coqui Public Model License | Nativo | 3-5 s | Sí (6 seg de audio) | GPU 4GB+ | — más lento, licencia no-MIT |
 | Kokoro | Apache-2.0 | Limitado | Baja | No | CPU/GPU ligero | — menos voces en español que Piper |
 | Fish Speech | Open source | Sí | 1-2 s | Sí | GPU 4GB+ | — requiere GPU |
@@ -39,13 +39,17 @@ Servidor de inferencia: **Ollama** (simplifica gestión de modelos y expone API 
 
 **Elección: Piper.** Es la única opción de calidad "muy buena" que corre exclusivamente en CPU con latencia sub-segundo, condición obligatoria dado que el VPS no garantiza GPU. Si en una fase posterior se añade GPU al VPS, XTTS-v2 es el upgrade natural por clonación de voz y mayor naturalidad prosódica.
 
+¹ **Corrección respecto a la Etapa 1:** el `rhasspy/piper` original (MIT) está archivado desde octubre de 2025 y ya no recibe mantenimiento. El fork activamente mantenido — el que se usa realmente en `piper/Dockerfile` de este repo — es [OHF-Voice/piper1-gpl](https://github.com/OHF-Voice/piper1-gpl) (paquete PyPI `piper-tts`, mantenido por Home Assistant), licenciado GPL-3.0-or-later, no MIT. Sigue siendo 100% gratuito y open source; GPL-3.0 solo implica copyleft (cualquier modificación distribuida del propio Piper debe seguir siendo GPL), lo cual no afecta a este proyecto porque se consume Piper como servicio HTTP externo (contenedor aparte), no se enlaza ni se modifica su código.
+
 ## 4. Detección de actividad de voz (VAD)
 
 **Elección: Silero VAD** (MIT). Viene integrado como plugin nativo de LiveKit Agents, corre en CPU en <1ms por frame, es el estándar de facto en el ecosistema.
 
 ## 5. Detección de turno de conversación (turn detection)
 
-**Elección: LiveKit Turn Detector, modelo `v1-mini`.** Es gratuito para cualquier uso (no solo LiveKit Cloud), corre localmente en CPU, requiere <500MB RAM, y soporta español de forma nativa (14 idiomas). Resuelve el problema de que el VAD por sí solo no distingue una pausa para pensar de un turno terminado — reduce interrupciones prematuras del agente.
+**Elección: `livekit.agents.inference.TurnDetector(version="v1-mini")`.** Es gratuito para cualquier uso, corre localmente en CPU (~108MB de pesos residentes), y soporta español de forma nativa (14 idiomas). Resuelve el problema de que el VAD por sí solo no distingue una pausa para pensar de un turno terminado — reduce interrupciones prematuras del agente.
+
+**Corrección respecto a la Etapa 1:** el paquete separado `livekit-plugins-turn-detector` (el que se documentó originalmente) está deprecado en la versión actual del SDK (1.6.x); la clase vigente es `inference.TurnDetector`, ya integrada en `livekit-agents` sin instalación aparte. Verificado contra el código fuente real del SDK: con `version="v1-mini"` (el que se usa en `agent/agent.py`) el modelo corre siempre en local — nunca llama a la nube de LiveKit, no requiere ninguna API key de LiveKit Cloud.
 
 ## 6. Orquestador / transporte
 

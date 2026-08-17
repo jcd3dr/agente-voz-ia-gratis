@@ -62,4 +62,4 @@ LiveKit Server necesita estos puertos abiertos en el firewall del VPS:
 50000-60000/udp — rango RTP para medios WebRTC (ajustable en config)
 ```
 
-Además, un dominio con TLS (Let's Encrypt vía Caddy o Certbot+Nginx) es obligatorio para que los navegadores permitan capturar el micrófono fuera de `localhost`.
+Además, **dos subdominios con TLS** (Let's Encrypt vía Caddy, ya automatizado en `docker/Caddyfile`) son necesarios: uno dedicado por completo a LiveKit Server (`livekit.tu-dominio.com`) y otro para la landing page + servidor de tokens (`agente.tu-dominio.com`). Se usan dos subdominios y no rutas bajo un solo dominio porque LiveKit necesita todo el árbol de rutas de su dominio para su propia señalización WebSocket/API — mezclarlo con otras rutas rompe la conexión. Detalle completo en [`08-instalacion-despliegue.md`](./08-instalacion-despliegue.md). HTTPS es obligatorio en ambos: sin TLS, los navegadores bloquean la captura de micrófono fuera de `localhost`.
