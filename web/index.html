@@ -49,13 +49,17 @@
 </head>
 <body>
   <h1>Agente de voz IA — 100% open source</h1>
-  <p class="subtitle">Landing page minima de validacion (v1). Etapa 3 del roadmap.</p>
+  <p class="subtitle">Landing page mínima de validación (v1). Etapa 3 del roadmap.</p>
 
   <button id="talk-btn">Hablar con el agente</button>
   <div id="status">Desconectado</div>
   <div id="log"></div>
 
   <script>
+    // URL absoluta del token-server (resource Coolify separado, dominio propio).
+    // Se reemplaza en build/deploy si el dominio cambia; ver docs/08-instalacion-despliegue.md.
+    const TOKEN_SERVER_URL = "https://agente-voz-token.jcdcruz.com/token";
+
     const btn = document.getElementById("talk-btn");
     const statusEl = document.getElementById("status");
     const logEl = document.getElementById("log");
@@ -72,7 +76,7 @@
       btn.disabled = true;
       statusEl.textContent = "Pidiendo token...";
 
-      const resp = await fetch("/token", { method: "POST" });
+      const resp = await fetch(TOKEN_SERVER_URL, { method: "POST" });
       if (!resp.ok) {
         statusEl.textContent = "Error obteniendo el token. Revisa el token-server.";
         btn.disabled = false;
@@ -103,11 +107,11 @@
       await room.localParticipant.setMicrophoneEnabled(true);
 
       connected = true;
-      statusEl.textContent = "Conectado. El agente te esta escuchando.";
+      statusEl.textContent = "Conectado. El agente te está escuchando.";
       btn.textContent = "Colgar";
       btn.classList.add("listening");
       btn.disabled = false;
-      log("Sala conectada, microfono publicado");
+      log("Sala conectada, micrófono publicado");
     }
 
     async function disconnectFromAgent() {

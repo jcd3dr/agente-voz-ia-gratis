@@ -1,0 +1,14 @@
+# Usado por jcd3dr/isolated-builder (GitHub Actions, runner efimero) para probar
+# la construccion + arranque de la imagen del agente sin tocar el VPS.
+# No usar para despliegue real (ver docker-compose.yml y docs/08-instalacion-despliegue.md).
+services:
+  agent:
+    build:
+      context: ../agent
+    command: ["python3", "smoketest.py"]
+    environment:
+      WHISPER_MODEL_SIZE: small
+      WHISPER_COMPUTE_TYPE: int8
+      PORT: "8099"
+    ports:
+      - "8099:8099"
