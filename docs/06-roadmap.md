@@ -1,5 +1,7 @@
 # Roadmap del proyecto y de la serie de YouTube
 
+> **Este documento es el roadmap histórico de la Etapa 1**, escrito antes de empezar el despliegue real. El **plan vivo y backlog actual** — con el estado real, tarea por tarea, de qué está hecho, en curso o bloqueado — está en [`../PLAN.md`](./PLAN.md). Ante cualquier discrepancia entre este documento y `docs/PLAN.md`, `docs/PLAN.md` manda. El contenido original de este archivo se conserva íntegro debajo como contexto histórico.
+
 ## Etapa 1 — Investigación y arquitectura (completada)
 
 - Selección de framework de orquestación (LiveKit Agents)
@@ -49,3 +51,7 @@ Todo el código de estas cuatro etapas ya está en el repositorio (carpetas `age
 ---
 
 Cada etapa corresponde a un video/capítulo separado de la serie.
+
+---
+
+**Nota (2026-08-17):** desde que se escribió este roadmap, la Etapa 6 pasó de "TTS=Piper" a "TTS=Kokoro-FastAPI reutilizado" (ver [`docs/adr/0004-*.md`](./adr/0004-tts-kokoro-fastapi-supersede-piper.md)) y el despliegue se está haciendo vía Coolify en vez de únicamente SSH manual (ver [`docs/adr/0006-*.md`](./adr/0006-despliegue-coolify-nativo.md)). El detalle vivo de qué está hecho y qué falta de la Etapa 6 real está en [`../PLAN.md`](./PLAN.md), Fase 4.

@@ -1,8 +1,10 @@
 # Agente de Voz IA — 100% Open Source y Gratuito
 
+> **Fuente de verdad viva del proyecto:** [`AGENTS.md`](./AGENTS.md) (cómo se trabaja) + [`docs/PLAN.md`](./docs/PLAN.md) (qué falta, estado real, backlog) + [`docs/adr/`](./docs/adr/) (por qué se decidió cada cosa). Este README y los documentos `docs/01-08-*.md` son la investigación/especificación histórica de la Etapa 1 — siguen siendo útiles como contexto, pero **no reflejan necesariamente el estado más reciente**. Ante cualquier discrepancia, `docs/PLAN.md` manda.
+
 Documentación técnica del proceso de construcción de un agente conversacional de voz (STT → LLM → TTS en tiempo real) usando exclusivamente componentes open source, autoalojado en un VPS propio, sin dependencias de APIs de pago. Este repositorio es el material de referencia para una serie en YouTube que documenta la construcción completa, desde cero.
 
-**Estado actual: Etapas 1-5 construidas (código + infraestructura como código), pendientes de probar en un VPS real.** Todo el código de `agent/`, `server/`, `piper/`, `docker/`, `web/` y `scripts/` está escrito y verificado contra el código fuente real de `livekit-agents==1.6.10`, pero no se ha ejecutado de punta a punta contra un LiveKit Server real — este entorno de construcción no tenía acceso a tu VPS. La Etapa 6 (pruebas en la infraestructura real) queda pendiente. Ver [`docs/08-instalacion-despliegue.md`](./docs/08-instalacion-despliegue.md) para desplegarlo.
+**Estado actual: código de Etapas 1-5 construido, despliegue en el VPS real (Etapa 6, vía Coolify) en curso — bloqueado en el arranque de LiveKit Server.** Ver [`docs/PLAN.md`](./docs/PLAN.md), tarea 4.1, para el estado exacto y la nota de handoff.
 
 ## Objetivo
 
@@ -17,25 +19,28 @@ Un agente de voz conversacional en tiempo real (interrumpible, baja latencia, st
 
 | Capa | Componente | Licencia | Corre en |
 |---|---|---|---|
-| Orquestador / transporte de audio | [LiveKit Agents](https://github.com/livekit/agents) + LiveKit Server | Apache-2.0 | VPS (Docker) |
+| Orquestador / transporte de audio | [LiveKit Agents](https://github.com/livekit/agents) + LiveKit Server | Apache-2.0 | VPS (Docker / Coolify) |
 | Detección de voz (VAD) | Silero VAD | MIT | CPU, local |
 | Detección de turno de conversación | `inference.TurnDetector(version="v1-mini")` | LiveKit Model License, gratis | CPU, local |
 | Voz a texto (STT) | faster-whisper | MIT | CPU/GPU, local |
-| Modelo de lenguaje (LLM) | Ollama + Qwen2.5-7B-Instruct o Llama-3.1-8B-Instruct | Apache-2.0 / Llama Community License | CPU/GPU, local |
-| Texto a voz (TTS) | Piper (fork OHF-Voice/piper1-gpl) | GPL-3.0-or-later | CPU, local |
+| Modelo de lenguaje (LLM) | Ollama + Qwen2.5-7B-Instruct (servicio `ollama-api` reutilizado en el VPS) | Apache-2.0 | CPU/GPU, local |
+| Texto a voz (TTS) | Kokoro-FastAPI (servicio `kokoro-tts` reutilizado en el VPS) | Ver [`docs/adr/0004-*.md`](./docs/adr/0004-tts-kokoro-fastapi-supersede-piper.md) | CPU, local |
 
-Detalle completo, alternativas evaluadas y justificación de cada elección en [`docs/`](./docs).
+Detalle completo, alternativas evaluadas y justificación de cada elección: ver `docs/` para la investigación original y [`docs/adr/`](./docs/adr/) para las decisiones tal como quedaron (incluyendo el cambio de Piper a Kokoro-FastAPI).
 
 ## Estructura del repositorio
 
 ```
-docs/     — investigación, arquitectura, decisiones (Etapa 1)
-agent/    — worker del agente: VAD + STT (faster-whisper) + LLM (Ollama) + TTS (Piper)
+AGENTS.md — constitución del proyecto (leer primero)
+docs/PLAN.md — plan vivo y backlog (leer segundo)
+docs/adr/ — decisiones técnicas (Architecture Decision Records)
+docs/     — investigación, arquitectura, decisiones (Etapa 1, contexto histórico)
+agent/    — worker del agente: VAD + STT (faster-whisper) + LLM (Ollama) + TTS (Kokoro-FastAPI)
 server/   — servidor de tokens LiveKit (FastAPI) para la landing page
-piper/    — imagen Docker del servidor HTTP de Piper TTS
-docker/   — docker-compose.yml, config de LiveKit Server, Caddyfile (TLS)
+piper/    — imagen Docker del servidor HTTP de Piper TTS — SUPERSEDED, ver docs/adr/0004-*.md
+docker/   — docker-compose.yml, config de LiveKit Server, Caddyfile (TLS), smoketest-agent-compose.yml
 web/      — landing page mínima de validación (LiveKit Client SDK)
-scripts/  — setup del VPS, render de config, descarga del modelo LLM
+scripts/  — setup del VPS, render de config, descarga del modelo LLM (alternativa manual a Coolify)
 ```
 
 ## Índice de documentación
