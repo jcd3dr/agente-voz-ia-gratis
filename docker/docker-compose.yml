@@ -1,0 +1,74 @@
+services:
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    volumes:
+      - redis_data:/data
+
+  livekit:
+    image: livekit/livekit-server:latest
+    restart: unless-stopped
+    command: ["--config", "/etc/livekit.yaml"]
+    volumes:
+      - ./livekit.yaml:/etc/livekit.yaml:ro
+    ports:
+      - "7880:7880"
+      - "7881:7881"
+      - "50000-60000:50000-60000/udp"
+    depends_on:
+      - redis
+
+  ollama:
+    image: ollama/ollama:latest
+    restart: unless-stopped
+    volumes:
+      - ollama_data:/root/.ollama
+    # sin "ports:" publicado a proposito: solo accesible en la red interna de
+    # docker-compose (el agente le habla por http://ollama:11434)
+
+  piper:
+    build: ../piper
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      - piper_data:/data
+    # tampoco se publica al host: solo el agente le habla por http://piper:5000
+
+  token-server:
+    build: ../server
+    restart: unless-stopped
+    env_file: .env
+    depends_on:
+      - livekit
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ../web:/srv/web:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - livekit
+      - token-server
+
+  agent:
+    build: ../agent
+    restart: unless-stopped
+    env_file: .env
+    depends_on:
+      - livekit
+      - ollama
+      - piper
+
+volumes:
+  redis_data:
+  ollama_data:
+  piper_data:
+  caddy_data:
+  caddy_config:

@@ -1,0 +1,34 @@
+# Caddy hace de reverse proxy con TLS automatico (Let's Encrypt).
+#
+# Se usan DOS subdominios en vez de rutas (/path) bajo un solo dominio:
+# LiveKit Server necesita todo el arbol de rutas de su dominio para si mismo
+# (senalizacion WebSocket + API interna en distintos paths no documentados
+# publicamente uno a uno), asi que la practica verificada en las guias
+# oficiales/comunitarias de self-hosting es proxyar el dominio COMPLETO a
+# livekit:7880, sin mezclarlo con otras rutas.
+#
+# {$LIVEKIT_DOMAIN}, {$APP_DOMAIN} y {$ACME_EMAIL} salen del entorno
+# (docker-compose env_file: .env); Caddy sustituye variables de entorno de
+# forma nativa.
+
+{$LIVEKIT_DOMAIN} {
+    tls {$ACME_EMAIL}
+    reverse_proxy livekit:7880
+}
+
+{$APP_DOMAIN} {
+    tls {$ACME_EMAIL}
+
+    handle /token* {
+        reverse_proxy token-server:8080
+    }
+
+    handle /health* {
+        reverse_proxy token-server:8080
+    }
+
+    handle {
+        root * /srv/web
+        file_server
+    }
+}

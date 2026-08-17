@@ -1,0 +1,7 @@
+docker/.env
+docker/livekit.yaml
+__pycache__/
+*.pyc
+.venv/
+*.onnx
+*.onnx.json

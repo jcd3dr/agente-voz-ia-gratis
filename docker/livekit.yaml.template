@@ -1,0 +1,23 @@
+# Config de LiveKit Server self-hosted. Renderizado a docker/livekit.yaml por
+# scripts/02-render-config.sh (sustituye los placeholders __PLACEHOLDER__ con los
+# valores de docker/.env). No se versiona el archivo ya renderizado.
+#
+# Referencia: https://docs.livekit.io/transport/self-hosting/
+# Verificar este esquema contra la doc oficial antes de produccion: el self-hosting
+# overview no publica el YAML completo, asi que este archivo sigue el formato
+# estandar verificado en guias de despliegue de LiveKit (RamNode, comunidad),
+# no una copia literal de la doc oficial.
+
+port: 7880
+
+rtc:
+  tcp_port: 7881
+  port_range_start: 50000
+  port_range_end: 60000
+  use_external_ip: true
+
+redis:
+  address: redis:6379
+
+keys:
+  __LIVEKIT_API_KEY__: __LIVEKIT_API_SECRET__
