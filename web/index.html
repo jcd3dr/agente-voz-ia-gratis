@@ -45,6 +45,65 @@
     white-space: pre-wrap;
     text-align: left;
   }
+  #meters {
+    margin-top: 28px;
+    width: 100%;
+    max-width: 480px;
+  }
+  .meter {
+    margin-bottom: 12px;
+    text-align: left;
+  }
+  .meter-label {
+    font-size: 0.75rem;
+    color: #9ca3af;
+    margin-bottom: 4px;
+  }
+  .meter canvas {
+    width: 100%;
+    height: 48px;
+    display: block;
+    background: #16161d;
+    border-radius: 8px;
+  }
+  #pipeline {
+    margin-top: 24px;
+    width: 100%;
+    max-width: 480px;
+    text-align: left;
+  }
+  #agent-state {
+    display: inline-block;
+    font-size: 0.75rem;
+    padding: 4px 10px;
+    border-radius: 999px;
+    background: #27272f;
+    color: #9ca3af;
+  }
+  #agent-state.thinking { background: #78350f; color: #fbbf24; }
+  #agent-state.speaking { background: #1e3a8a; color: #93c5fd; }
+  #agent-state.listening { background: #14532d; color: #86efac; }
+  #transcript {
+    margin-top: 10px;
+    font-size: 0.85rem;
+    color: #d1d5db;
+    min-height: 1.3em;
+    font-style: italic;
+  }
+  #stage-timings {
+    margin-top: 10px;
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .stage-chip {
+    font-size: 0.72rem;
+    padding: 3px 8px;
+    border-radius: 6px;
+    background: #16161d;
+    color: #9ca3af;
+    border: 1px solid #27272f;
+  }
 </style>
 </head>
 <body>
@@ -53,23 +112,173 @@
 
   <button id="talk-btn">Hablar con el agente</button>
   <div id="status">Desconectado</div>
+
+  <div id="meters">
+    <div class="meter">
+      <div class="meter-label">Tú (micrófono)</div>
+      <canvas id="meter-in" width="480" height="96"></canvas>
+    </div>
+    <div class="meter">
+      <div class="meter-label">Agente</div>
+      <canvas id="meter-out" width="480" height="96"></canvas>
+    </div>
+  </div>
+
+  <div id="pipeline">
+    <span id="agent-state">Inactivo</span>
+    <div id="transcript"></div>
+    <div id="stage-timings"></div>
+  </div>
+
   <div id="log"></div>
 
   <script>
     // URL absoluta del token-server (resource Coolify separado, dominio propio).
     // Se reemplaza en build/deploy si el dominio cambia; ver docs/08-instalacion-despliegue.md.
-    const TOKEN_SERVER_URL = "https://agente-voz-token.jcdcruz.com/token";
+    // En localhost (pruebas con docker-compose.local.yml) se usa el token-server
+    // local en vez del de produccion.
+    const TOKEN_SERVER_URL =
+      location.hostname === "localhost" || location.hostname === "127.0.0.1"
+        ? "http://localhost:8080/token"
+        : "https://agente-voz-token.jcdcruz.com/token";
 
     const btn = document.getElementById("talk-btn");
     const statusEl = document.getElementById("status");
     const logEl = document.getElementById("log");
+    const canvasIn = document.getElementById("meter-in");
+    const canvasOut = document.getElementById("meter-out");
+    const agentStateEl = document.getElementById("agent-state");
+    const transcriptEl = document.getElementById("transcript");
+    const stageTimingsEl = document.getElementById("stage-timings");
 
     let room = null;
     let connected = false;
 
+    // Traduce los eventos que agent.py manda por data-channel (topic
+    // "pipeline") a la UI: estado del agente, transcript en vivo, y timing
+    // por etapa (STT/LLM/TTS/turn-detection). Ver agent/agent.py, handlers
+    // colgados de session.on("agent_state_changed" | "user_input_transcribed"
+    // | "metrics_collected").
+    const STATE_LABELS = {
+      initializing: "Iniciando",
+      idle: "Inactivo",
+      listening: "Escuchando",
+      thinking: "Pensando (LLM)",
+      speaking: "Hablando (TTS)",
+    };
+    const STAGE_LABELS = {
+      STTMetrics: "STT",
+      LLMMetrics: "LLM",
+      TTSMetrics: "TTS",
+      EOUMetrics: "Turno",
+    };
+
+    function handlePipelineMessage(payload) {
+      let msg;
+      try {
+        msg = JSON.parse(new TextDecoder().decode(payload));
+      } catch (_) {
+        return;
+      }
+
+      if (msg.kind === "state") {
+        agentStateEl.textContent = STATE_LABELS[msg.state] || msg.state;
+        agentStateEl.className = msg.state;
+      } else if (msg.kind === "transcript") {
+        transcriptEl.textContent = '"' + msg.text + '"';
+      } else if (msg.kind === "metrics") {
+        const label = STAGE_LABELS[msg.stage] || msg.stage;
+        const parts = [];
+        if (msg.duration !== undefined) parts.push(msg.duration + "ms total");
+        if (msg.ttft !== undefined) parts.push("primer token " + msg.ttft + "ms");
+        if (msg.ttfb !== undefined) parts.push("primer audio " + msg.ttfb + "ms");
+        if (msg.end_of_utterance_delay !== undefined) parts.push(msg.end_of_utterance_delay + "ms");
+        const chip = document.createElement("span");
+        chip.className = "stage-chip";
+        chip.textContent = `${label}: ${parts.join(", ")}`;
+        stageTimingsEl.prepend(chip);
+        while (stageTimingsEl.children.length > 8) {
+          stageTimingsEl.removeChild(stageTimingsEl.lastChild);
+        }
+      }
+    }
+
+    function resetPipelinePanel() {
+      agentStateEl.textContent = "Inactivo";
+      agentStateEl.className = "";
+      transcriptEl.textContent = "";
+      stageTimingsEl.innerHTML = "";
+    }
+
     function log(msg) {
       const time = new Date().toLocaleTimeString();
       logEl.textContent += `[${time}] ${msg}\n`;
+    }
+
+    // Visualizador de señal: un AnalyserNode por track (mic local / agente
+    // remoto), SOLO para leer niveles y dibujar - nunca se conecta a
+    // audioContext.destination, asi que no reproduce ni duplica audio.
+    let audioCtx = null;
+    let rafId = null;
+    const meters = []; // { analyser, canvas, dataArray }
+
+    function ensureAudioCtx() {
+      if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      return audioCtx;
+    }
+
+    function attachMeter(mediaStreamTrack, canvas) {
+      const ctx = ensureAudioCtx();
+      const source = ctx.createMediaStreamSource(new MediaStream([mediaStreamTrack]));
+      const analyser = ctx.createAnalyser();
+      analyser.fftSize = 1024;
+      source.connect(analyser); // no .connect(ctx.destination) -> no se escucha por acá
+      meters.push({ analyser, canvas, dataArray: new Uint8Array(analyser.fftSize), source });
+      if (!rafId) drawMeters();
+    }
+
+    function drawMeters() {
+      rafId = requestAnimationFrame(drawMeters);
+      for (const m of meters) {
+        const canvasCtx = m.canvas.getContext("2d");
+        const w = m.canvas.width;
+        const h = m.canvas.height;
+        m.analyser.getByteTimeDomainData(m.dataArray);
+
+        canvasCtx.fillStyle = "#16161d";
+        canvasCtx.fillRect(0, 0, w, h);
+        canvasCtx.lineWidth = 2;
+        canvasCtx.strokeStyle = m.canvas === canvasIn ? "#22c55e" : "#4f46e5";
+        canvasCtx.beginPath();
+
+        const step = w / m.dataArray.length;
+        let x = 0;
+        for (let i = 0; i < m.dataArray.length; i++) {
+          const v = m.dataArray[i] / 128.0; // 0..2, 1.0 = silencio
+          const y = (v * h) / 2;
+          if (i === 0) canvasCtx.moveTo(x, y);
+          else canvasCtx.lineTo(x, y);
+          x += step;
+        }
+        canvasCtx.stroke();
+      }
+    }
+
+    function clearMeters() {
+      if (rafId) {
+        cancelAnimationFrame(rafId);
+        rafId = null;
+      }
+      for (const m of meters) {
+        m.source.disconnect();
+        const canvasCtx = m.canvas.getContext("2d");
+        canvasCtx.clearRect(0, 0, m.canvas.width, m.canvas.height);
+      }
+      meters.length = 0;
+      if (audioCtx) {
+        audioCtx.close().catch(() => {});
+        audioCtx = null;
+      }
     }
 
     async function connectToAgent() {
@@ -91,8 +300,13 @@
         if (track.kind === "audio") {
           const audioEl = track.attach();
           document.body.appendChild(audioEl);
+          attachMeter(track.mediaStreamTrack, canvasOut);
           log("Reproduciendo audio del agente");
         }
+      });
+
+      room.on(LivekitClient.RoomEvent.DataReceived, (payload, _participant, _kind, topic) => {
+        if (topic === "pipeline") handlePipelineMessage(payload);
       });
 
       room.on(LivekitClient.RoomEvent.Disconnected, () => {
@@ -101,10 +315,15 @@
         btn.classList.remove("listening");
         btn.disabled = false;
         connected = false;
+        clearMeters();
+        resetPipelinePanel();
       });
 
       await room.connect(url, token);
-      await room.localParticipant.setMicrophoneEnabled(true);
+      const micPub = await room.localParticipant.setMicrophoneEnabled(true);
+      if (micPub && micPub.track) {
+        attachMeter(micPub.track.mediaStreamTrack, canvasIn);
+      }
 
       connected = true;
       statusEl.textContent = "Conectado. El agente te está escuchando.";
@@ -131,6 +350,18 @@
       } catch (err) {
         console.error(err);
         statusEl.textContent = "Error: " + err.message;
+        // Si connectToAgent() fallo DESPUES de room.connect() (ej. el
+        // navegador nego el microfono, o fallo el peer connection), room
+        // queda conectado a la sala sin publicar audio: una sesion "zombie"
+        // que otros participantes futuros van a auto-suscribirse. Sin este
+        // cleanup, cada reintento del boton apila una sesion zombie mas.
+        if (room) {
+          room.disconnect().catch(() => {});
+          room = null;
+        }
+        connected = false;
+        btn.textContent = "Hablar con el agente";
+        btn.classList.remove("listening");
         btn.disabled = false;
       }
     });

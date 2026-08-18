@@ -48,10 +48,12 @@ class FasterWhisperSTT(stt.STT):
         compute_type: str = "int8",
         language: str = "es",
         cpu_threads: int = 4,
+        beam_size: int = 5,
         download_root: str | None = None,
     ) -> None:
         super().__init__(capabilities=STTCapabilities(streaming=False, interim_results=False))
         self._opts = _STTOptions(language=language)
+        self._beam_size = beam_size
         self._model = WhisperModel(
             model_size,
             device=device,
@@ -87,7 +89,7 @@ class FasterWhisperSTT(stt.STT):
             segments, _info = self._model.transcribe(
                 io.BytesIO(wav_bytes),
                 language=lang or None,
-                beam_size=5,
+                beam_size=self._beam_size,
                 # el VAD de la sesion (Silero) ya delimito el turno de habla;
                 # no hace falta que faster-whisper vuelva a filtrar silencio.
                 vad_filter=False,

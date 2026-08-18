@@ -1,5 +1,8 @@
 docker/.env
+docker/.env.local
 docker/livekit.yaml
+docker/livekit.local.yaml
+.claude/
 __pycache__/
 *.pyc
 .venv/

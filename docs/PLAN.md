@@ -11,12 +11,12 @@ Vocabulario de estado (fijo, no inventar variantes):
 
 ## Estado actual
 
-- **Fecha última actualización:** 2026-08-17
-- **Agente que actualizó:** Claude (Claude Code / Cowork, sesión de despliegue Coolify + reestructuración multi-agente)
-- **Fase activa:** Fase 4 — Despliegue en Coolify (ver backlog abajo). La Fase 5 (reestructuración multi-agente: `AGENTS.md` + este archivo + `docs/adr/`) queda completa y pusheada a `main` con esta misma actualización.
-- **Tarea en curso:** Ninguna en ejecución activa en este momento. La próxima tarea a retomar es **4.1** (LiveKit no arranca en el VPS), estado `BLOCKED` — ver nota de handoff en esa tarea, es el punto de reanudación más importante para la próxima sesión.
-- **Último bloqueo:** LiveKit Server no llega a estado healthy en el Service de Coolify `voz-ia-infra`, con tres configuraciones distintas probadas (todas fallaron igual, incluyendo el modo cero-config `--dev` de LiveKit). Hipótesis líder no confirmada: agotamiento de memoria del VPS (~15+ servicios corriendo en el mismo host). Sin herramienta de métricas de RAM disponible vía `coolify-mcp`. El servicio Coolify que se estaba probando (`vfuz5azxdz2keib3vifqhjoh`, nombre "voz-ia-infra") **fue eliminado** al final de la sesión anterior para dejar de estresar el VPS — no existe ahora mismo ningún recurso "voz-ia-infra" en Coolify; hay que recrearlo desde cero.
-- **Nota importante de contexto:** en esta misma sesión se generaron credenciales reales de LiveKit (API key + secret) para probar el despliegue. **No están escritas en ningún archivo de este repo** (por no-negociable #4 de `AGENTS.md`) y no sobrevivieron a la eliminación del servicio de Coolify. Si se recrea el servicio, hay que generar credenciales nuevas.
+- **Fecha última actualización:** 2026-08-18
+- **Agente que actualizó:** Claude (Claude Code), sesión de validación local end-to-end en Docker Desktop (Fase 6)
+- **Fase activa:** Fase 6 — Validación local en Docker Desktop, `DONE` (ver backlog abajo). Fase 4 (Coolify/VPS real) sigue `BLOCKED` en la tarea 4.1, sin tocar en esta sesión — pero ver la nota siguiente, es relevante para retomarla.
+- **Hallazgo clave de esta sesión, relevante para retomar la Fase 4:** el pipeline completo (LiveKit Server + agent worker con VAD+STT+LLM+TTS + token-server + web) fue levantado y probado de punta a punta corriendo 100% local en Docker Desktop (Windows), con conversaciones de voz reales funcionando. Esto **descarta definitivamente** que el código de este repo (`agent/`, `server/`, `docker/docker-compose.yml`) tenga algún defecto que impida el despliegue — el bloqueo de la tarea 4.1 es 100% de infraestructura del VPS/Coolify, confirmado ahora por partida triple (isolated-builder en 4.2, y esta validación local completa).
+- **Tarea en curso:** Ninguna en ejecución activa. Próxima tarea a retomar: **4.1** (LiveKit no arranca en el VPS) sigue siendo el punto de reanudación más importante — ver su nota de handoff, no cambió nada en esta sesión.
+- **Nota importante de contexto (arrastrada de la sesión anterior, sigue vigente):** las credenciales de LiveKit generadas para probar el despliegue en Coolify no sobrevivieron a la eliminación del servicio y no están en ningún archivo de este repo. Si se recrea el servicio de Coolify, generar credenciales nuevas.
 
 ---
 
@@ -169,3 +169,70 @@ Vocabulario de estado (fijo, no inventar variantes):
 - Estado: `DONE`
 - Contexto: `README.md` y `docs/06-roadmap.md` señalan ahora `AGENTS.md`/`docs/PLAN.md` como la fuente de verdad viva, sin borrar su contenido histórico (`docs/06-roadmap.md` conserva íntegro el roadmap original Etapa 1-7, con una nota final apuntando a `docs/PLAN.md`).
 - Evidencia: banner al inicio de ambos archivos, contenido original intacto debajo. Incluido en el mismo commit que 5.5. Combinada con 3.3 (tabla de stack de `README.md`) en el mismo archivo/commit.
+
+### Fase 6 — Validación end-to-end en Docker Desktop local (sesión 2026-08-18)
+
+Contexto general de la fase: el usuario quería poder probar el agente completo en su propia PC (Windows + Docker Desktop) mientras la Fase 4 (VPS/Coolify) sigue bloqueada, tanto para validar que el código funciona como para poder iterar rápido sin depender del VPS. Todo el trabajo de esta fase es aditivo/local — no cambia nada del despliegue de producción (`docker/docker-compose.yml`, `docker/livekit.yaml.template`, `docker/Caddyfile` quedan intactos).
+
+**6.1 — Armar `docker/docker-compose.local.yml` (stack de pruebas locales)**
+- Estado: `DONE`
+- Contexto: el compose de producción asume Caddy con TLS/dominio público y servicios externos (`ollama-api`, `kokoro-tts`) que en el VPS ya viven aparte. Para local hacía falta una topología distinta: sin Caddy (Kokoro se sirve directo en `:8000` vía `caddy file-server`, sin TLS — `localhost` ya es contexto seguro para el micrófono), con `kokoro-tts` como contenedor propio (no hay uno externo en la PC), y sin contenedor de Ollama (ver 6.2).
+- Archivos nuevos: `docker/docker-compose.local.yml`, `docker/livekit.local.yaml` (gitignored, tiene las keys de LiveKit para local), `docker/.env.local` (gitignored).
+- Uso: `docker compose -p voz-agente -f docker-compose.local.yml --env-file .env.local up -d` desde `docker/`.
+
+**6.2 — Reutilizar el Ollama nativo del host en vez de un contenedor nuevo**
+- Estado: `DONE`
+- Contexto: el usuario ya tenía Ollama corriendo nativo en Windows (puerto 11434) con modelos propios (incluyendo modelos cloud-proxied vía Ollama Cloud, renombrados por el usuario). Coherente con el no-negociable #3 de `AGENTS.md` (reutilizar infraestructura viva, no duplicar) — se descartó levantar un Ollama en Docker.
+- Detalle técnico: el agent worker (en Docker) le habla al Ollama del host vía `http://host.docker.internal:11434/v1` (`OLLAMA_BASE_URL` en `.env.local`). En Windows/Mac, Docker Desktop resuelve `host.docker.internal` automáticamente.
+- Modelo LLM usado en las pruebas locales: primero `qwen2.5:7b-instruct` (descargado localmente, ~4.7GB) — corriendo en la misma CPU que STT/TTS causaba contención severa y timeouts. Luego se cambió a un modelo cloud-proxied ya disponible en el Ollama del usuario (`claude-Haiku-1:latest` → `gemma4:31b` remoto, después `claude-sonnet-1:latest` → `nemotron-3-super` remoto), sacando esa carga de la CPU local. **Esto es una decisión válida solo para pruebas locales de este usuario específico** (tiene esos modelos cloud ya vinculados a su cuenta de Ollama) — no es una recomendación de arquitectura para producción/VPS, donde el LLM sigue siendo Ollama local con `qwen2.5:7b-instruct` (ver README/ADRs).
+
+**6.3 — Resolver conflicto de puertos RTC de LiveKit en Docker Desktop Windows**
+- Estado: `DONE`
+- Contexto: `docker-compose.yml` de producción mapea el rango completo `50000-60000:50000-60000/udp` (10.000 puertos) para WebRTC. En Docker Desktop for Windows, mapear un rango tan grande hace que `docker compose up`/`down`/`rm` sobre ese contenedor cuelguen indefinidamente (confirmado en esta sesión: contenedores atascados en estado `Created` por 10+ minutos, comandos `docker rm -f` sin resolver nunca).
+- Fix (solo en `docker-compose.local.yml`): rango reducido a `50000-50099` (100 puertos, de sobra para un solo usuario probando).
+- Bug relacionado (WebRTC "could not establish pc connection"): sin `rtc.node_ip` explícito en la config de LiveKit, el servidor anuncia la IP interna del contenedor Docker como candidato ICE, que el navegador (en el host) no puede alcanzar. Fix: `node_ip: 127.0.0.1` en `docker/livekit.local.yaml` (los puertos ya están mapeados a `localhost` vía Docker, así que el navegador sí llega ahí).
+
+**6.4 — Fix: timeout del LLM en frío (`APITimeoutError`)**
+- Estado: `DONE`
+- Contexto: default de `livekit-agents` es `APIConnectOptions(timeout=10.0)` para el LLM. Ollama en CPU tarda ~8-10s solo en cargar un modelo a RAM la primera vez (o si se descargó de memoria tras el `keep_alive`), lo cual por sí solo ya se come el timeout default.
+- Fix: `agent/agent.py`, `AgentSession(conn_options=SessionConnectOptions(llm_conn_options=APIConnectOptions(timeout=30.0)))`.
+
+**6.5 — Fix: sesiones "zombie" en `web/index.html` (bug real, afecta también producción)**
+- Estado: `DONE`
+- Contexto: si `room.connect()` tenía éxito pero `setMicrophoneEnabled(true)` fallaba después (ej. permiso de micrófono denegado, o falla el peer connection), el código nunca desconectaba esa sala — quedaba una conexión viva publicando (o intentando publicar) audio. Cada reintento del botón "Hablar con el agente" apilaba una sesión zombie más. Con varias zombies en la sala, un participante nuevo se auto-suscribe a los tracks de audio de esas zombies (que son el mismo usuario, de intentos anteriores) — lo cual se sentía como "escuchar mi propia voz" (eco), no un problema de hardware.
+- Fix: en el `catch` del listener del botón, si `room` existe, se llama `room.disconnect()` y se resetea el estado (`connected = false`, texto del botón, etc.) antes de permitir un nuevo intento.
+- **Este fix aplica igual en producción** — no es específico de las pruebas locales, es un bug real del cliente web.
+
+**6.6 — Visualizador de señal + panel de pipeline en `web/index.html`**
+- Estado: `DONE`
+- Contexto: pedido explícito del usuario para poder ver, sin depender de leer logs de Docker, si el micrófono está entrando y si/cuándo responde el agente.
+- Implementado:
+  - Dos medidores de nivel de audio en vivo (canvas + `AnalyserNode` de Web Audio API) para el track del micrófono local y el track del agente — **solo lectura de niveles, nunca conectados a `audioContext.destination`**, así que no reproducen ni duplican audio.
+  - Panel de pipeline: estado del agente en vivo (Escuchando/Pensando/Hablando), transcript final de lo que el STT entendió, y chips de timing por etapa (STT/LLM/TTS/detección de turno).
+  - Mecanismo: `agent/agent.py` se suscribe a los eventos nativos de `AgentSession` (`agent_state_changed`, `user_input_transcribed`, `metrics_collected`) y los reenvía a la sala vía `room.local_participant.publish_data(..., topic="pipeline")`; el cliente JS escucha `RoomEvent.DataReceived` filtrando por ese topic.
+  - **Bug encontrado y corregido en el camino:** `publish_data()` de la SDK de Python **es una coroutine** a pesar de que su firma type-hint dice `-> None` (confirmado por un `RuntimeWarning: coroutine was never awaited` en runtime) — hay que agendarla con `asyncio.create_task()` desde los handlers síncronos de `session.on()`, no llamarla a secas.
+  - **Segundo bug encontrado:** `metrics_collected` también dispara para `VADMetrics` (sin datos útiles para este panel) con mucha frecuencia — sin filtrar por tipo, inundaba el log y el panel, tapando las etiquetas útiles de STT/LLM/TTS/Turno casi al instante. Filtrado explícito por nombre de clase de métrica.
+- Este logging estructurado (`[PIPELINE] STT/LLM/TTS/Turno: ...ms`) en el log del contenedor del agente es ahora la forma recomendada de diagnosticar lentitud — mucho más claro que leer los logs crudos de `faster_whisper`/`livekit.agents`.
+
+**6.7 — Ajuste de endpointing/VAD para pausas naturales al hablar**
+- Estado: `DONE`, con nota de precaución
+- Contexto: `inference.TurnDetector(version="v1-mini")` es un turn-detector "streaming", que por default usa `endpointing={"min_delay": 0.3, "max_delay": 2.5}` (más agresivo que el default "fixed" de 0.5/3.0) — corta el turno del usuario apenas 0.3s de silencio, lo cual sentía al usuario como tener que hablar rápido sin pausas naturales.
+- **Intento fallido primero:** subir a `{"min_delay": 0.8, "max_delay": 4.0}` resultó contraproducente — cuando el modelo de turn-detection duda (pasa seguido en español), espera hasta `max_delay` antes de decidir, así que un `max_delay` alto se convierte en el peor caso *típico*, no una excepción rara. Esto se midió directamente: el delay de detección de turno pasó de ser normalmente <1s a ~5s consistentes.
+- **Valor final, moderado:** `{"min_delay": 0.6, "max_delay": 2.8}` — algo de tolerancia a pausas cortas, sin arrastrar el peor caso muy por encima del default.
+- También: `silero.VAD.load(min_silence_duration=0.7)` (default 0.55) para el mismo objetivo, a nivel de segmentación de audio pre-STT.
+- Nota para quien retome esto: no quedó una comparación cuantitativa rigurosa de distintos valores — si sigue sintiéndose muy agresivo o muy lento, iterar sobre estos dos parámetros con el logging de `[PIPELINE] Turno` como referencia.
+
+**6.8 — Prewarm de VAD/STT + fix de contención de CPU en el pool de procesos**
+- Estado: `DONE`
+- Contexto: sin `setup_fnc`/`prewarm`, `livekit-agents` cargaba el modelo VAD (Silero) y el modelo de faster-whisper desde cero en cada sesión/job nuevo — costo real medido de ~6-8s, pagado en vivo mientras el usuario ya podía estar hablando (audio perdido al inicio de la conversación).
+- Fix: función `prewarm(proc: JobProcess)` colgada de `server.setup_fnc`, que carga VAD+STT una vez en `proc.userdata`, reutilizado por `entrypoint()` vía `ctx.proc.userdata`. Confirmado con evidencia real en logs (`elapsed_time` de "process initialized" bajó de ~0.1s pre-fix — porque antes se cargaba dentro de `entrypoint()`, no medido ahí — a medirse explícitamente en el prewarm).
+- **Bug real introducido y corregido en el camino:** al mismo tiempo se cambió `WHISPER_CPU_THREADS` para usar `os.cpu_count()` (todos los cores) en vez del default fijo de 4. Como `num_idle_processes` (default de `livekit-agents`: 4 en modo producción) hace que el pool arranque **varios procesos de reserva en paralelo** al iniciar el worker, 4 procesos pidiendo todos los cores cada uno (4×6=24 threads en 6 cores reales) generó tanta contención que cada prewarm individual superó `initialize_process_timeout` (default 10s) y los 4 procesos se mataron solos (`TimeoutError`, `exit code -10` en los logs). Confirmado con logs reales antes y después del fix.
+- Fix final: `WHISPER_CPU_THREADS` default fijo en 4 (no `os.cpu_count()`), y `AgentServer(num_idle_processes=1)` — para pruebas de un solo usuario no hace falta el pool de 4. Con esto, el prewarm de 1 proceso completó en ~1.8s, sin errores.
+- Archivos: `agent/agent.py` (función `prewarm`, `server.setup_fnc`, `AgentServer(num_idle_processes=1)`), `agent/plugins/stt_faster_whisper.py` (parámetro `beam_size` agregado al constructor, antes hardcodeado a 5 en `_transcribe()`).
+- **TODO no resuelto:** comparar `WHISPER_BEAM_SIZE=1` (greedy, más rápido) contra el default `5` (beam search, más preciso) — quedó configurable vía env var pero no se llegó a medir la diferencia real en este hardware.
+
+**6.9 — Validación end-to-end confirmada**
+- Estado: `DONE`
+- Contexto: con todos los fixes de 6.1-6.8 aplicados, se sostuvieron conversaciones de voz completas (habla del usuario → transcript correcto → respuesta del LLM → audio del TTS reproducido) corriendo 100% en Docker Desktop local, sin el bug de sesiones zombie, sin timeouts del LLM, y con visibilidad completa de timing por etapa vía el panel/logs `[PIPELINE]`.
+- Métricas reales observadas en este hardware (Windows, 6 cores, sin GPU) — no representativas del VPS de producción, pero útiles de referencia: STT (faster-whisper "small", CPU) ~4-10s según carga concurrente; LLM cloud-proxied entre ~0.5-15s (alta variancia, no explicada); TTS (Kokoro local) ~1-3s.
+- **Corrección importante de un error propio de esta sesión:** en un momento se interpretó el log `"Processing audio with duration 00:17.876"` de `faster_whisper` como "tarda 17.9s en procesar" — es incorrecto, ese log reporta la **duración del audio de entrada** (17.9 segundos de habla), no el tiempo de procesamiento. El tiempo de procesamiento real se mide correctamente con `STTMetrics.duration` (ver 6.6), y ronda los 4-10s en este hardware. Si se retoma investigación de performance, usar siempre `[PIPELINE] STT: duracion_total_ms=...` como fuente de verdad, no ese log de `faster_whisper`.

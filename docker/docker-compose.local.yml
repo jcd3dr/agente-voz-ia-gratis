@@ -1,0 +1,86 @@
+# Compose para PROBAR el proyecto en esta PC con Docker Desktop, sin Caddy/TLS/
+# dominios publicos (eso es solo para el despliegue real en el VPS, ver
+# docker-compose.yml + docs/08-instalacion-despliegue.md).
+#
+# A diferencia de docker-compose.yml (produccion), este:
+#   - no incluye Caddy: web se sirve directo por HTTP en :8000, token-server en :8080,
+#     livekit en :7880/:7881 — localhost es contexto seguro para el microfono sin HTTPS.
+#   - agrega un contenedor kokoro-tts local (en el VPS real ese servicio ya vive
+#     aparte, ver docs/adr/0004-tts-kokoro-fastapi-supersede-piper.md).
+#   - NO incluye Ollama: reutiliza el Ollama que ya corre nativo en esta PC (puerto
+#     11434), igual que el no-negociable #3 de AGENTS.md exige reutilizar el
+#     ollama-api ya vivo en el VPS en vez de duplicarlo. El agent worker le habla
+#     via host.docker.internal (Docker Desktop resuelve eso al host Windows).
+#   - usa docker/livekit.local.yaml (sin TLS, use_external_ip: false) y docker/.env.local.
+#
+# Uso:
+#   docker compose -f docker-compose.local.yml --env-file .env.local up --build
+
+services:
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    volumes:
+      - redis_data:/data
+
+  livekit:
+    image: livekit/livekit-server:latest
+    restart: unless-stopped
+    command: ["--config", "/etc/livekit.yaml"]
+    volumes:
+      - ./livekit.local.yaml:/etc/livekit.yaml:ro
+    ports:
+      - "7880:7880"
+      - "7881:7881"
+      # Rango de puertos RTC reducido (Docker Desktop en Windows tarda muchisimo
+      # -o directamente cuelga- mapeando rangos grandes como 50000-60000 completo,
+      # que es lo que usa produccion). 100 puertos alcanza de sobra para probar
+      # solo, en localhost.
+      - "50000-50099:50000-50099/udp"
+    depends_on:
+      - redis
+
+  kokoro-tts:
+    image: ghcr.io/remsky/kokoro-fastapi-cpu:latest
+    restart: unless-stopped
+    volumes:
+      - kokoro_data:/app/api/src/voices
+
+  token-server:
+    build: ../server
+    restart: unless-stopped
+    env_file: .env.local
+    ports:
+      - "8080:8080"
+    depends_on:
+      - livekit
+
+  web:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    command: ["caddy", "file-server", "--root", "/srv/web", "--listen", ":8000"]
+    ports:
+      - "8000:8000"
+    volumes:
+      - ../web:/srv/web:ro
+    depends_on:
+      - token-server
+
+  agent:
+    build: ../agent
+    restart: unless-stopped
+    env_file: .env.local
+    extra_hosts:
+      # Docker Desktop en Windows/Mac ya resuelve host.docker.internal por
+      # defecto; este extra_hosts es solo por si se corre en Linux.
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - whisper_data:/data/whisper
+    depends_on:
+      - livekit
+      - kokoro-tts
+
+volumes:
+  redis_data:
+  kokoro_data:
+  whisper_data:

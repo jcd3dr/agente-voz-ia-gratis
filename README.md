@@ -4,7 +4,7 @@
 
 Documentación técnica del proceso de construcción de un agente conversacional de voz (STT → LLM → TTS en tiempo real) usando exclusivamente componentes open source, autoalojado en un VPS propio, sin dependencias de APIs de pago. Este repositorio es el material de referencia para una serie en YouTube que documenta la construcción completa, desde cero.
 
-**Estado actual: código de Etapas 1-5 construido, despliegue en el VPS real (Etapa 6, vía Coolify) en curso — bloqueado en el arranque de LiveKit Server.** Ver [`docs/PLAN.md`](./docs/PLAN.md), tarea 4.1, para el estado exacto y la nota de handoff.
+**Estado actual: pipeline completo validado de punta a punta corriendo local (Docker Desktop) — conversaciones de voz reales funcionando.** El despliegue en el VPS real (vía Coolify) sigue bloqueado en el arranque de LiveKit Server, pero la validación local confirma que el bloqueo es 100% de infraestructura, no del código de este repo. Ver [`docs/PLAN.md`](./docs/PLAN.md), tareas 4.1 y Fase 6, para el estado exacto y la nota de handoff.
 
 ## Objetivo
 
